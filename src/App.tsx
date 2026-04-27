@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import ClientHome from "@/pages/ClientHome";
+import ClientOrders from "@/pages/ClientOrders";
 import AdminLogin from "@/pages/admin/Login";
 import AdminDishes from "@/pages/admin/Dishes";
 import AdminOrders from "@/pages/admin/Orders";
@@ -10,6 +11,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<ClientHome />} />
+        <Route path="/history" element={<ClientOrders />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         
         <Route path="/admin" element={<AdminLayout />}>

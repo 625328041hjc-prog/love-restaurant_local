@@ -1,12 +1,13 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, UtensilsCrossed, LogOut, Bell } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useEffect, useState, useRef } from 'react';
+import { api } from '@/lib/api';
 
 export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [newOrder, setNewOrder] = useState(false);
+  const lastOrderCount = useRef(0);
 
   useEffect(() => {
     // Check login state simply
@@ -16,13 +17,11 @@ export default function AdminLayout() {
       return;
     }
 
-    // Connect Supabase Realtime for notifications
-    const channel = supabase
-      .channel('public:orders:notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'orders' },
-        (payload) => {
+    // Polling for new orders
+    const checkForNewOrders = async () => {
+      try {
+        const orders = await api.getOrders();
+        if (lastOrderCount.current > 0 && orders.length > lastOrderCount.current) {
           setNewOrder(true);
           // Play notification sound
           try {
@@ -32,12 +31,16 @@ export default function AdminLayout() {
             console.error("Audio play failed:", e);
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+        lastOrderCount.current = orders.length;
+      } catch (err) {
+        console.error(err);
+      }
     };
+
+    checkForNewOrders();
+    const interval = setInterval(checkForNewOrders, 5000);
+
+    return () => clearInterval(interval);
   }, [navigate]);
 
   const handleLogout = () => {

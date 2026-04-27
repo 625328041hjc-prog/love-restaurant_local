@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Order, OrderItem } from '@/types';
-import { CheckCircle2, Clock, Utensils, AlertCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { Order } from '@/types';
+import { CheckCircle2, Clock, Utensils, AlertCircle, Star } from 'lucide-react';
+import { api } from '@/lib/api';
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -9,19 +9,8 @@ export default function AdminOrders() {
 
   const fetchOrders = async () => {
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (error) throw error;
-      if (data) {
-        const parsedOrders = data.map((o: Order) => ({
-          ...o,
-          parsedItems: JSON.parse(o.items)
-        }));
-        setOrders(parsedOrders);
-      }
+      const data = await api.getOrders();
+      setOrders(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -32,44 +21,16 @@ export default function AdminOrders() {
   useEffect(() => {
     fetchOrders();
 
-    const channel = supabase
-      .channel('public:orders')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'orders' },
-        (payload) => {
-          const newOrder = {
-            ...payload.new,
-            parsedItems: JSON.parse(payload.new.items)
-          } as Order;
-          setOrders(prev => [newOrder, ...prev]);
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders' },
-        (payload) => {
-          setOrders(prev => prev.map(o => o.id === payload.new.id ? { ...o, status: payload.new.status } : o));
-        }
-      )
-      .subscribe();
+    const interval = setInterval(() => {
+      fetchOrders();
+    }, 5000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, []);
 
   const updateStatus = async (id: number, status: 'new' | 'completed') => {
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status })
-        .eq('id', id);
-        
-      if (error) throw error;
-      
-      // Local state update is handled by the UPDATE realtime subscription,
-      // but we can also optimistically update here:
+      await api.updateOrderStatus(id, status);
       setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
     } catch (err) {
       console.error(err);
@@ -77,7 +38,7 @@ export default function AdminOrders() {
     }
   };
 
-  if (loading) return <div className="flex justify-center py-20 text-orange-500"><AlertCircle className="w-8 h-8 animate-spin" /></div>;
+  if (loading && orders.length === 0) return <div className="flex justify-center py-20 text-orange-500"><AlertCircle className="w-8 h-8 animate-spin" /></div>;
 
   return (
     <div className="space-y-6">
@@ -94,7 +55,10 @@ export default function AdminOrders() {
           </div>
         ) : (
           orders.map(order => {
-            const isNew = order.status === 'new';
+            const isNew = order.status === 'new' || order.status === 'pending';
+            const totalQuantity = order.items.reduce((acc, item) => acc + item.qty, 0);
+            const totalPrice = order.items.reduce((acc, item) => acc + (item.price * item.qty), 0);
+            
             return (
               <div 
                 key={order.id} 
@@ -135,27 +99,43 @@ export default function AdminOrders() {
 
                 <div className="p-6">
                   <div className="space-y-4">
-                    {order.parsedItems?.map((item: OrderItem, idx: number) => (
+                    {order.items?.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center pb-4 border-b border-gray-50 last:border-0 last:pb-0">
                         <div className="flex items-center gap-4">
                           <span className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 font-bold flex items-center justify-center text-sm">
-                            {item.quantity}x
+                            {item.qty}x
                           </span>
-                          <span className="font-medium text-gray-800 text-lg">{item.name}</span>
+                          <span className="font-medium text-gray-800 text-lg">{(item as any).name || '未知菜品'}</span>
                         </div>
                         <span className="text-gray-500 font-medium">
-                          ¥{item.price * item.quantity}
+                          ¥{item.price * item.qty}
                         </span>
                       </div>
                     ))}
                   </div>
 
                   <div className="mt-6 pt-6 border-t border-dashed border-gray-200 flex justify-between items-center">
-                    <span className="text-gray-500">共 {order.parsedItems?.reduce((acc, item) => acc + item.quantity, 0)} 件菜品</span>
+                    <span className="text-gray-500">共 {totalQuantity} 件菜品</span>
                     <div className="text-xl font-bold text-orange-500">
-                      总计: ¥{order.total_price}
+                      总计: ¥{totalPrice}
                     </div>
                   </div>
+
+                  {order.reviews && order.reviews.length > 0 && (
+                    <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
+                      <div className="flex items-center mb-2">
+                        <span className="text-sm font-bold text-orange-600 mr-2">她的评价:</span>
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className={`w-4 h-4 ${i < order.reviews[0].rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
+                          ))}
+                        </div>
+                      </div>
+                      {order.reviews[0].comment && (
+                        <p className="text-sm text-gray-700 italic">"{order.reviews[0].comment}"</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

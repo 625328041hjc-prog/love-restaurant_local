@@ -1,24 +1,34 @@
 export interface Dish {
   id: number;
   name: string;
-  image: string;
+  image_url: string;
   price: number;
   method: string;
+  is_active: number;
   created_at: string;
 }
 
 export interface OrderItem {
-  dishId: number;
-  name: string;
+  id: number;
+  order_id: number;
+  dish_id: number;
+  qty: number;
   price: number;
-  quantity: number;
+}
+
+export interface OrderReview {
+  id: number;
+  order_id: number;
+  rating: number;
+  comment: string;
+  created_at: string;
 }
 
 export interface Order {
   id: number;
-  items: string; // JSON string in DB, but we will parse it in frontend
-  parsedItems?: OrderItem[];
-  total_price: number;
-  status: 'new' | 'completed';
+  note: string;
+  status: 'new' | 'completed' | 'pending';
   created_at: string;
+  items: OrderItem[];
+  reviews: OrderReview[];
 }

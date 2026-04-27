@@ -9,7 +9,7 @@ export default function AdminLogin() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === '5201314' || password === 'admin') { // simple password check
+    if (password === 'hjclovezyt') {
       localStorage.setItem('adminToken', 'true');
       navigate('/admin/orders');
     } else {
@@ -33,7 +33,7 @@ export default function AdminLogin() {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="password"
-                placeholder="请输入暗号 (5201314 或 admin)"
+                placeholder="请输入密码"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all text-gray-700"

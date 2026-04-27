@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Dish } from '@/types';
 import { Plus, Edit2, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function AdminDishes() {
   const [dishes, setDishes] = useState<Dish[]>([]);
@@ -13,19 +13,13 @@ export default function AdminDishes() {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [method, setMethod] = useState('');
-  const [image, setImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const fetchDishes = async () => {
     try {
-      const { data, error } = await supabase
-        .from('dishes')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (error) throw error;
-      if (data) setDishes(data);
+      const data = await api.getDishes();
+      setDishes(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -42,25 +36,16 @@ export default function AdminDishes() {
       setEditingDish(dish);
       setName(dish.name);
       setPrice(dish.price.toString());
-      setMethod(dish.method);
-      setImagePreview(dish.image);
+      setMethod(dish.method || '');
+      setImageUrl(dish.image_url || '');
     } else {
       setEditingDish(null);
       setName('');
       setPrice('');
       setMethod('');
-      setImagePreview('');
+      setImageUrl('');
     }
-    setImage(null);
     setIsModalOpen(true);
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImage(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,43 +53,17 @@ export default function AdminDishes() {
     setSubmitting(true);
 
     try {
-      let imagePath = editingDish ? editingDish.image : '';
-
-      if (image) {
-        const fileExt = image.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('images')
-          .upload(fileName, image);
-          
-        if (uploadError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabase.storage
-          .from('images')
-          .getPublicUrl(fileName);
-          
-        imagePath = publicUrl;
-      }
-
       const dishData = {
         name,
         price: parseFloat(price) || 0,
         method,
-        image: imagePath
+        image_url: imageUrl
       };
 
       if (editingDish) {
-        const { error } = await supabase
-          .from('dishes')
-          .update(dishData)
-          .eq('id', editingDish.id);
-        if (error) throw error;
+        await api.updateDish(editingDish.id, dishData);
       } else {
-        const { error } = await supabase
-          .from('dishes')
-          .insert([dishData]);
-        if (error) throw error;
+        await api.addDish(dishData);
       }
 
       setIsModalOpen(false);
@@ -120,8 +79,7 @@ export default function AdminDishes() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这道菜吗？她可能再也吃不到啦！')) return;
     try {
-      const { error } = await supabase.from('dishes').delete().eq('id', id);
-      if (error) throw error;
+      await api.deleteDish(id);
       fetchDishes();
     } catch (err) {
       console.error(err);
@@ -148,8 +106,8 @@ export default function AdminDishes() {
         {dishes.map(dish => (
           <div key={dish.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
             <div className="h-48 bg-gray-50 relative">
-              {dish.image ? (
-                <img src={dish.image} alt={dish.name} className="w-full h-full object-cover" />
+              {dish.image_url ? (
+                <img src={dish.image_url} alt={dish.name} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300">
                   <ImageIcon className="w-12 h-12" />
@@ -198,24 +156,22 @@ export default function AdminDishes() {
             
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">菜品图片</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">图片链接 (网络URL)</label>
                 <div className="flex items-center gap-4">
-                  <div className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden relative">
-                    {imagePreview ? (
-                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="w-24 h-24 rounded-xl border border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden relative flex-shrink-0">
+                    {imageUrl ? (
+                      <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
                       <ImageIcon className="w-8 h-8 text-gray-300" />
                     )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
                   </div>
-                  <div className="text-sm text-gray-500">
-                    点击图片区域上传<br/>建议尺寸 1:1
-                  </div>
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={e => setImageUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white outline-none transition-all"
+                    placeholder="https://..."
+                  />
                 </div>
               </div>
 
